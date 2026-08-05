@@ -69,6 +69,16 @@ function toReport(row) {
 }
 
 async function init() {
+  // 先连接实例（不指定库），确保目标数据库存在，避免“Unknown database”报错
+  const bootstrap = await mysql.createConnection({
+    host: config.db.host,
+    port: config.db.port,
+    user: config.db.user,
+    password: config.db.password
+  })
+  await bootstrap.query(`CREATE DATABASE IF NOT EXISTS \`${config.db.database}\` DEFAULT CHARACTER SET utf8mb4`)
+  await bootstrap.end()
+
   pool = mysql.createPool({
     host: config.db.host,
     port: config.db.port,
