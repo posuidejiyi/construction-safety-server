@@ -61,6 +61,38 @@ function defaultAccounts() {
   ]
 }
 
+// 将 MySQL 行记录（下划线命名）转换为代码中使用的驼峰命名对象
+function mapUser(row) {
+  if (!row) return null
+  return {
+    id: row.id,
+    name: row.name,
+    idCard: row.id_card,
+    phone: row.phone,
+    passwordHash: row.password_hash,
+    role: row.role,
+    projectId: row.project_id,
+    projectName: row.project_name,
+    branch: row.branch,
+    registerTime: row.register_time
+  }
+}
+
+function mapLocation(row) {
+  if (!row) return null
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    projectName: row.project_name,
+    branch: row.branch,
+    city: row.city,
+    district: row.district,
+    reporter: row.reporter,
+    reporterId: row.reporter_id,
+    createTime: row.create_time
+  }
+}
+
 function toReport(row) {
   if (!row) return null
   let data = row.data
@@ -113,17 +145,17 @@ async function createUser(user) {
 
 async function findUserByPhone(phone) {
   const [rows] = await pool.query('SELECT * FROM users WHERE phone = ? LIMIT 1', [phone])
-  return rows[0] ? rows[0] : null
+  return mapUser(rows[0])
 }
 
 async function findUserById(id) {
   const [rows] = await pool.query('SELECT * FROM users WHERE id = ? LIMIT 1', [id])
-  return rows[0] ? rows[0] : null
+  return mapUser(rows[0])
 }
 
 async function listUsers() {
   const [rows] = await pool.query('SELECT * FROM users')
-  return rows
+  return rows.map(mapUser)
 }
 
 async function updateUserPassword(id, passwordHash) {
@@ -180,7 +212,7 @@ async function listLocations(filter = {}) {
   if (filter.reporterId) { conds.push('reporter_id = ?'); params.push(filter.reporterId) }
   const where = conds.length ? 'WHERE ' + conds.join(' AND ') : ''
   const [rows] = await pool.query(`SELECT * FROM locations ${where} ORDER BY create_time DESC, id DESC`, params)
-  return rows
+  return rows.map(mapLocation)
 }
 
 async function deleteLocationsOlderThan(days) {
