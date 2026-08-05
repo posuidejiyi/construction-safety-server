@@ -1,0 +1,15 @@
+# 本地构建专用（国内网络用镜像源）；云托管构建请使用根目录的 Dockerfile
+FROM docker.1ms.run/library/node:20-alpine
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci --omit=dev || npm install --omit=dev
+
+COPY . .
+
+ENV NODE_ENV=production
+
+EXPOSE 80
+
+CMD ["node", "src/server.js"]
