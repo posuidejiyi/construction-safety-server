@@ -86,6 +86,18 @@ router.post('/reset-password', async (req, res, next) => {
   } catch (e) { next(e) }
 })
 
+// 检查手机号是否已注册（找回密码第一步用）
+router.post('/check-phone', async (req, res, next) => {
+  try {
+    const { phone } = req.body || {}
+    if (!validatePhone(String(phone || '').trim())) {
+      return res.status(400).json({ success: false, message: '请输入正确的手机号' })
+    }
+    const user = await db.findUserByPhone(String(phone).trim())
+    res.json({ success: true, exists: !!user })
+  } catch (e) { next(e) }
+})
+
 // 当前登录用户信息
 router.get('/me', auth, (req, res) => {
   res.json({ success: true, user: safeUser(req.user) })

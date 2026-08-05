@@ -1,10 +1,10 @@
 // utils/api.js —— 对接后端服务的请求封装
-// 使用方法：把本文件复制到小程序项目的 utils/ 目录下，
-// 登录成功后把 token 存到 storage（key: cs_token），其余接口自动带上。
-// 参考 README 中的「前端对接指引」改造各页面。
-const BASE_URL = 'https://你的域名.weixincloud.run' // TODO: 改成你的云托管服务域名（第四步完成后获得）
+// 已配置为你的云托管服务域名；登录成功后自动保存登录态，其余接口自动携带 token。
+// 401 时自动清除登录态并跳回登录页。
+const BASE_URL = 'https://construction-safety-292362-10-1463965914.sh.run.tcloudbase.com'
 
 const TOKEN_KEY = 'cs_token'
+const USER_KEY = 'cs_current_user'
 
 function getToken() {
   return wx.getStorageSync(TOKEN_KEY) || ''
@@ -23,8 +23,7 @@ function request(method, path, data) {
       success(res) {
         if (res.statusCode === 401) {
           // 登录过期：清除本地登录态，回到登录页
-          wx.removeStorageSync(TOKEN_KEY)
-          wx.removeStorageSync('cs_current_user')
+          clearSession()
           wx.reLaunch({ url: '/pages/login/index' })
           reject(res.data)
           return
@@ -43,9 +42,30 @@ function request(method, path, data) {
   })
 }
 
+// ===== 登录态管理 =====
+function saveSession(user, token) {
+  if (token) wx.setStorageSync(TOKEN_KEY, token)
+  if (user) wx.setStorageSync(USER_KEY, user)
+}
+function clearSession() {
+  wx.removeStorageSync(TOKEN_KEY)
+  wx.removeStorageSync(USER_KEY)
+}
+function getSession() {
+  return wx.getStorageSync(USER_KEY) || null
+}
+function setSessionUser(user) {
+  if (user) wx.setStorageSync(USER_KEY, user)
+}
+
 module.exports = {
   BASE_URL,
   TOKEN_KEY,
+  USER_KEY,
+  saveSession,
+  clearSession,
+  getSession,
+  setSessionUser,
 
   // ===== 认证 =====
   register(data) { return request('POST', '/api/auth/register', data) },
@@ -53,6 +73,7 @@ module.exports = {
   resetPassword(phone, idCard, newPassword) {
     return request('POST', '/api/auth/reset-password', { phone, idCard, newPassword })
   },
+  checkPhone(phone) { return request('POST', '/api/auth/check-phone', { phone }) },
   getMe() { return request('GET', '/api/auth/me') },
 
   // ===== 上报（后端按登录角色自动限定数据范围：项目端=自己的，分公司端=本分公司，公司端=全部）=====
