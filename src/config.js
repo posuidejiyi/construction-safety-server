@@ -2,7 +2,8 @@
 require('dotenv').config()
 
 const config = {
-  port: parseInt(process.env.PORT || '3000', 10),
+  // 生产环境（Dockerfile 已设 NODE_ENV=production）默认 80，对应云托管容器端口；本地开发默认 3000
+  port: parseInt(process.env.PORT || (process.env.NODE_ENV === 'production' ? '80' : '3000'), 10),
   jwtSecret: process.env.JWT_SECRET || 'dev-secret-please-change',
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',
   db: {
