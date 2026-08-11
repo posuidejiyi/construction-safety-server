@@ -1,11 +1,22 @@
 // Express 应用装配
 const express = require('express')
+const config = require('./config')
+const db = require('./db')
 
 const app = express()
 app.use(express.json())
 
-// 健康检查（云托管探活用）
-app.get('/health', (req, res) => res.json({ status: 'ok' }))
+// 健康检查（云托管探活用）：MySQL 模式下会顺带探活数据库，
+// 数据库不可用时返回 503，云托管探活失败会自动重启容器，实现自愈
+app.get('/health', async (req, res) => {
+  try {
+    if (config.db.driver === 'mysql') await db.ping()
+    res.json({ status: 'ok', db: 'ok' })
+  } catch (e) {
+    console.error('[健康检查] 数据库不可用：', e.message)
+    res.status(503).json({ status: 'degraded', db: 'error' })
+  }
+})
 
 app.use('/api/auth', require('./routes/auth'))
 app.use('/api/reports', require('./routes/reports'))

@@ -6,6 +6,49 @@ const config = require('../config')
 const { genId, formatTime } = require('../utils/gen')
 
 let pool = null
+let recreateTimer = null
+
+// 创建连接池（带 error 自愈：连接层抖动时自动重建，避免一直 500）
+async function createPool() {
+  const p = mysql.createPool({
+    host: config.db.host,
+    port: config.db.port,
+    user: config.db.user,
+    password: config.db.password,
+    database: config.db.database,
+    waitForConnections: true,
+    connectionLimit: 10,
+    charset: 'utf8mb4',
+    enableKeepAlive: true,
+    keepAliveInitialDelay: 0
+  })
+  p.on('error', (err) => {
+    console.error('[MySQL] 连接池错误：', err.message)
+    if (['PROTOCOL_CONNECTION_LOST', 'ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'ER_ACCESS_DENIED_ERROR'].includes(err.code)) {
+      schedulePoolRecreate()
+    }
+  })
+  return p
+}
+
+// 延迟重建连接池（5 秒后；已有重建任务则跳过，失败自动重试）
+function schedulePoolRecreate() {
+  if (recreateTimer) return
+  recreateTimer = setTimeout(async () => {
+    recreateTimer = null
+    const old = pool
+    try {
+      const p = await createPool()
+      await p.query('SELECT 1')
+      pool = p
+      if (old && old !== p) old.end().catch(() => {})
+      console.log('[MySQL] 连接池已重建')
+    } catch (e) {
+      console.error('[MySQL] 重建连接池失败：', e.message)
+      schedulePoolRecreate()
+    }
+  }, 5000)
+}
 
 const DDL = [
   `CREATE TABLE IF NOT EXISTS users (
@@ -101,38 +144,45 @@ function toReport(row) {
 }
 
 async function init() {
-  // 先连接实例（不指定库），确保目标数据库存在，避免“Unknown database”报错
-  const bootstrap = await mysql.createConnection({
-    host: config.db.host,
-    port: config.db.port,
-    user: config.db.user,
-    password: config.db.password
-  })
-  await bootstrap.query(`CREATE DATABASE IF NOT EXISTS \`${config.db.database}\` DEFAULT CHARACTER SET utf8mb4`)
-  await bootstrap.end()
+  // 启动重试：云托管容器启动时 MySQL 实例可能短暂不可达，最多重试 5 次，避免启动即退出
+  const maxAttempts = 5
+  let lastErr = null
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      // 先连接实例（不指定库），确保目标数据库存在，避免“Unknown database”报错
+      const bootstrap = await mysql.createConnection({
+        host: config.db.host,
+        port: config.db.port,
+        user: config.db.user,
+        password: config.db.password
+      })
+      await bootstrap.query(`CREATE DATABASE IF NOT EXISTS \`${config.db.database}\` DEFAULT CHARACTER SET utf8mb4`)
+      await bootstrap.end()
 
-  pool = mysql.createPool({
-    host: config.db.host,
-    port: config.db.port,
-    user: config.db.user,
-    password: config.db.password,
-    database: config.db.database,
-    waitForConnections: true,
-    connectionLimit: 10,
-    charset: 'utf8mb4'
-  })
-  for (const sql of DDL) await pool.query(sql)
-  // 播种默认账号（仅当手机号不存在时）
-  for (const u of defaultAccounts()) {
-    await pool.query(
-      `INSERT IGNORE INTO users (id, name, id_card, phone, password_hash, role, project_id, project_name, branch, register_time)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [u.id, u.name, u.idCard, u.phone, u.passwordHash, u.role, u.projectId, u.projectName, u.branch, u.registerTime]
-    )
+      pool = await createPool()
+      for (const sql of DDL) await pool.query(sql)
+      // 播种默认账号（仅当手机号不存在时）
+      for (const u of defaultAccounts()) {
+        await pool.query(
+          `INSERT IGNORE INTO users (id, name, id_card, phone, password_hash, role, project_id, project_name, branch, register_time)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [u.id, u.name, u.idCard, u.phone, u.passwordHash, u.role, u.projectId, u.projectName, u.branch, u.registerTime]
+        )
+      }
+      return
+    } catch (e) {
+      lastErr = e
+      console.error(`[MySQL] 初始化失败（第 ${attempt}/${maxAttempts} 次）：`, e.message)
+      if (attempt < maxAttempts) await new Promise(r => setTimeout(r, 5000 * attempt))
+    }
   }
+  throw lastErr
 }
 
 async function close() { if (pool) await pool.end() }
+
+// 数据库探活（/health 使用）
+async function ping() { await pool.query('SELECT 1') }
 
 async function createUser(user) {
   await pool.query(
@@ -222,7 +272,7 @@ async function deleteLocationsOlderThan(days) {
 }
 
 module.exports = {
-  init, close, createUser, findUserByPhone, findUserById, listUsers, updateUserPassword,
+  init, close, ping, createUser, findUserByPhone, findUserById, listUsers, updateUserPassword,
   createReport, listReports, updateReportStatus, deleteReportsOlderThan,
   createLocation, listLocations, deleteLocationsOlderThan
 }
