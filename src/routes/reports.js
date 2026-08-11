@@ -111,4 +111,20 @@ router.put('/:id/status', async (req, res, next) => {
   } catch (e) { next(e) }
 })
 
+// 撤回上报（仅上报人本人可撤回，且仅限待审核状态）
+router.delete('/:id', async (req, res, next) => {
+  try {
+    const report = await db.findReportById(req.params.id)
+    if (!report) return res.status(404).json({ success: false, message: '上报记录不存在' })
+    if (report.reporterId !== req.user.id) {
+      return res.status(403).json({ success: false, message: '只能撤回自己的上报' })
+    }
+    if (report.status !== '待审核') {
+      return res.status(400).json({ success: false, message: '仅待审核状态的上报可以撤回' })
+    }
+    await db.deleteReport(req.params.id)
+    res.json({ success: true, message: '撤回成功' })
+  } catch (e) { next(e) }
+})
+
 module.exports = router

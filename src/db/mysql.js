@@ -239,6 +239,15 @@ async function updateReportStatus(id, status) {
   return rows[0] ? toReport(rows[0]) : null
 }
 
+async function findReportById(id) {
+  const [rows] = await pool.query('SELECT * FROM reports WHERE id = ? LIMIT 1', [id])
+  return rows[0] ? toReport(rows[0]) : null
+}
+
+async function deleteReport(id) {
+  await pool.query('DELETE FROM reports WHERE id = ?', [id])
+}
+
 async function deleteReportsOlderThan(days) {
   const cutoff = formatTime(new Date(Date.now() - days * 24 * 3600 * 1000))
   const [result] = await pool.query('DELETE FROM reports WHERE create_time < ?', [cutoff])
@@ -273,6 +282,6 @@ async function deleteLocationsOlderThan(days) {
 
 module.exports = {
   init, close, ping, createUser, findUserByPhone, findUserById, listUsers, updateUserPassword,
-  createReport, listReports, updateReportStatus, deleteReportsOlderThan,
+  createReport, listReports, findReportById, updateReportStatus, deleteReport, deleteReportsOlderThan,
   createLocation, listLocations, deleteLocationsOlderThan
 }

@@ -53,6 +53,13 @@ async function updateReportStatus(id, status) {
   r.status = status
   return toReport(r)
 }
+async function findReportById(id) {
+  const r = state.reports.find(x => x.id === id)
+  return r ? toReport(r) : null
+}
+async function deleteReport(id) {
+  state.reports = state.reports.filter(x => x.id !== id)
+}
 async function deleteReportsOlderThan(days) {
   const cutoff = formatTime(new Date(Date.now() - days * 24 * 3600 * 1000))
   const before = state.reports.length
@@ -77,6 +84,6 @@ async function deleteLocationsOlderThan(days) {
 
 module.exports = {
   init, close, createUser, findUserByPhone, findUserById, listUsers, updateUserPassword,
-  createReport, listReports, updateReportStatus, deleteReportsOlderThan,
+  createReport, listReports, findReportById, updateReportStatus, deleteReport, deleteReportsOlderThan,
   createLocation, listLocations, deleteLocationsOlderThan
 }
