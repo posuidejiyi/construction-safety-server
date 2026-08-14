@@ -24,6 +24,37 @@ async function scopedReports(user, type) {
   return db.listReports(filter)
 }
 
+// 把定位记录还原成前端上报结构（type=projectLocation，与前端“我的上报”项目定位 tab 对应）
+function locationToReport(loc) {
+  const region = [loc.province, loc.city, loc.district].filter(Boolean).join('')
+  return {
+    id: loc.id,
+    type: 'projectLocation',
+    typeName: '项目定位',
+    projectId: loc.projectId || '',
+    projectName: loc.projectName || '',
+    branch: loc.branch || '',
+    reporter: loc.reporter || '',
+    reporterId: loc.reporterId || '',
+    status: '已审核', // 定位上报即生效，无需审核
+    subType: region || (loc.city || '') + (loc.district || ''),
+    content: region + (loc.address ? ' ' + loc.address : '') + (loc.latitude ? `（${loc.latitude}, ${loc.longitude}）` : ''),
+    items: [],
+    latitude: loc.latitude,
+    longitude: loc.longitude,
+    address: loc.address || '',
+    createTime: loc.createTime
+  }
+}
+
+// 根据角色返回可见范围内的定位（与 scopedReports 相同的范围规则）
+async function scopedLocations(user) {
+  const filter = {}
+  if (user.role === ROLES.PROJECT) filter.reporterId = user.id
+  if (user.role === ROLES.BRANCH) filter.branch = user.branch
+  return db.listLocations(filter)
+}
+
 // 创建上报
 router.post('/', async (req, res, next) => {
   try {
@@ -61,11 +92,27 @@ router.post('/', async (req, res, next) => {
 })
 
 // 上报列表（按角色自动限定范围；?type= 可按类型过滤）
+// 说明：项目定位也作为上报的一种（type=projectLocation）展示在“我的上报”里，
+// 数据来自 locations 表，合并返回；?type=projectLocation 时只返回定位记录
 router.get('/', async (req, res, next) => {
   try {
     const type = req.query.type || undefined
     const reports = await scopedReports(req.user, type)
-    res.json({ success: true, reports: reports.map(toClient) })
+    let list = reports.map(toClient)
+
+    // 定位合并：type 为空（全部）或为 projectLocation 时，把定位记录并入列表
+    if (!type || type === 'projectLocation') {
+      const locations = await scopedLocations(req.user)
+      const locationReports = locations.map(locationToReport)
+      if (type === 'projectLocation') {
+        list = locationReports
+      } else {
+        list = list.concat(locationReports)
+        list.sort((a, b) => String(b.createTime).localeCompare(String(a.createTime)))
+      }
+    }
+
+    res.json({ success: true, reports: list })
   } catch (e) { next(e) }
 })
 
