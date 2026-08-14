@@ -8,10 +8,11 @@ function getProjectReportStatus(projectUsers, reports) {
   const unreported = []
 
   projectUsers.forEach(p => {
+    const item = { name: p.name, projectName: p.projectName, branch: p.branch, phone: p.phone }
     if (reportedIds.has(p.id)) {
-      reported.push(p)
+      reported.push(item)
     } else {
-      unreported.push({ name: p.name, projectName: p.projectName, branch: p.branch, phone: p.phone })
+      unreported.push(item)
     }
   })
 
@@ -19,6 +20,7 @@ function getProjectReportStatus(projectUsers, reports) {
     total: projectUsers.length,
     reportedCount: reported.length,
     unreportedCount: unreported.length,
+    reported,
     unreported
   }
 }
@@ -30,14 +32,16 @@ function getAllProjectReportStatus(projectUsers, reports) {
 
   projectUsers.forEach(p => {
     if (!branchMap[p.branch]) {
-      branchMap[p.branch] = { branch: p.branch, total: 0, reportedCount: 0, unreportedCount: 0, unreported: [] }
+      branchMap[p.branch] = { branch: p.branch, total: 0, reportedCount: 0, unreportedCount: 0, reported: [], unreported: [] }
     }
     branchMap[p.branch].total++
+    const item = { name: p.name, projectName: p.projectName, branch: p.branch, phone: p.phone }
     if (reportedIds.has(p.id)) {
       branchMap[p.branch].reportedCount++
+      branchMap[p.branch].reported.push(item)
     } else {
       branchMap[p.branch].unreportedCount++
-      branchMap[p.branch].unreported.push({ name: p.name, projectName: p.projectName, branch: p.branch, phone: p.phone })
+      branchMap[p.branch].unreported.push(item)
     }
   })
 

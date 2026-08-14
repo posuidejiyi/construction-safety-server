@@ -84,8 +84,12 @@ const DDL = [
     project_id VARCHAR(64) NOT NULL DEFAULT '',
     project_name VARCHAR(128) NOT NULL DEFAULT '',
     branch VARCHAR(64) NOT NULL DEFAULT '',
+    province VARCHAR(64) NOT NULL DEFAULT '',
     city VARCHAR(64) NOT NULL,
     district VARCHAR(64) NOT NULL,
+    address VARCHAR(255) NOT NULL DEFAULT '',
+    latitude DECIMAL(10,6) NULL,
+    longitude DECIMAL(10,6) NULL,
     reporter VARCHAR(64) NOT NULL,
     reporter_id VARCHAR(32) NOT NULL,
     create_time VARCHAR(32) NOT NULL,
@@ -128,8 +132,12 @@ function mapLocation(row) {
     projectId: row.project_id,
     projectName: row.project_name,
     branch: row.branch,
+    province: row.province || '',
     city: row.city,
     district: row.district,
+    address: row.address || '',
+    latitude: row.latitude != null ? Number(row.latitude) : null,
+    longitude: row.longitude != null ? Number(row.longitude) : null,
     reporter: row.reporter,
     reporterId: row.reporter_id,
     createTime: row.create_time
@@ -161,6 +169,8 @@ async function init() {
 
       pool = await createPool()
       for (const sql of DDL) await pool.query(sql)
+      // 表结构迁移：旧表缺少 province/address/latitude/longitude 列时补充（云托管 MySQL 已有存量表）
+      await migrateLocationColumns()
       // 播种默认账号（仅当手机号不存在时）
       for (const u of defaultAccounts()) {
         await pool.query(
@@ -177,6 +187,25 @@ async function init() {
     }
   }
   throw lastErr
+}
+
+// locations 表增量迁移：为存量表补充 province/address/latitude/longitude 列
+async function migrateLocationColumns() {
+  const [cols] = await pool.query(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'locations'`,
+    [config.db.database]
+  )
+  const existing = new Set(cols.map(c => c.COLUMN_NAME))
+  const adds = []
+  if (!existing.has('province')) adds.push("ADD COLUMN province VARCHAR(64) NOT NULL DEFAULT '' AFTER branch")
+  if (!existing.has('address')) adds.push("ADD COLUMN address VARCHAR(255) NOT NULL DEFAULT '' AFTER district")
+  if (!existing.has('latitude')) adds.push('ADD COLUMN latitude DECIMAL(10,6) NULL AFTER address')
+  if (!existing.has('longitude')) adds.push('ADD COLUMN longitude DECIMAL(10,6) NULL AFTER latitude')
+  if (adds.length) {
+    await pool.query('ALTER TABLE locations ' + adds.join(', '))
+    console.log('[MySQL] locations 表已迁移，新增列：', adds.join('; '))
+  }
 }
 
 async function close() { if (pool) await pool.end() }
@@ -255,11 +284,11 @@ async function deleteReportsOlderThan(days) {
 }
 
 async function createLocation(loc) {
-  const { id, projectId, projectName, branch, city, district, reporter, reporterId, createTime } = loc
+  const { id, projectId, projectName, branch, province, city, district, address, latitude, longitude, reporter, reporterId, createTime } = loc
   await pool.query(
-    `INSERT INTO locations (id, project_id, project_name, branch, city, district, reporter, reporter_id, create_time)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [id, projectId, projectName, branch, city, district, reporter, reporterId, createTime]
+    `INSERT INTO locations (id, project_id, project_name, branch, province, city, district, address, latitude, longitude, reporter, reporter_id, create_time)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, projectId, projectName, branch, province || '', city, district, address || '', latitude, longitude, reporter, reporterId, createTime]
   )
   return loc
 }
