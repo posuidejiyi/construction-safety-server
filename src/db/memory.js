@@ -82,8 +82,16 @@ async function deleteLocationsOlderThan(days) {
   return before - state.locations.length
 }
 
+async function findLocationById(id) {
+  return state.locations.find(l => l.id === id) || null
+}
+
+async function deleteLocation(id) {
+  state.locations = state.locations.filter(l => l.id !== id)
+}
+
 module.exports = {
   init, close, createUser, findUserByPhone, findUserById, listUsers, updateUserPassword,
   createReport, listReports, findReportById, updateReportStatus, deleteReport, deleteReportsOlderThan,
-  createLocation, listLocations, deleteLocationsOlderThan
+  createLocation, listLocations, findLocationById, deleteLocation, deleteLocationsOlderThan
 }

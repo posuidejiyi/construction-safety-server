@@ -158,18 +158,29 @@ router.put('/:id/status', async (req, res, next) => {
   } catch (e) { next(e) }
 })
 
-// 撤回上报（仅上报人本人可撤回，且仅限待审核状态）
+// 撤回上报/定位：普通上报仅本人+待审核；位置上报（locations 表）仅本人，即报即生效可直接撤销
 router.delete('/:id', async (req, res, next) => {
   try {
-    const report = await db.findReportById(req.params.id)
-    if (!report) return res.status(404).json({ success: false, message: '上报记录不存在' })
-    if (report.reporterId !== req.user.id) {
+    const id = req.params.id
+    // 1. 普通上报（reports 表）
+    const report = await db.findReportById(id)
+    if (report) {
+      if (report.reporterId !== req.user.id) {
+        return res.status(403).json({ success: false, message: '只能撤回自己的上报' })
+      }
+      if (report.status !== '待审核') {
+        return res.status(400).json({ success: false, message: '仅待审核状态的上报可以撤回' })
+      }
+      await db.deleteReport(id)
+      return res.json({ success: true, message: '撤回成功' })
+    }
+    // 2. 位置上报（locations 表，type=projectLocation）
+    const location = await db.findLocationById(id)
+    if (!location) return res.status(404).json({ success: false, message: '上报记录不存在' })
+    if (location.reporterId !== req.user.id) {
       return res.status(403).json({ success: false, message: '只能撤回自己的上报' })
     }
-    if (report.status !== '待审核') {
-      return res.status(400).json({ success: false, message: '仅待审核状态的上报可以撤回' })
-    }
-    await db.deleteReport(req.params.id)
+    await db.deleteLocation(id)
     res.json({ success: true, message: '撤回成功' })
   } catch (e) { next(e) }
 })

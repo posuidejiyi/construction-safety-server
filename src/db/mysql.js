@@ -309,8 +309,17 @@ async function deleteLocationsOlderThan(days) {
   return result.affectedRows
 }
 
+async function findLocationById(id) {
+  const [rows] = await pool.query('SELECT * FROM locations WHERE id = ? LIMIT 1', [id])
+  return rows[0] ? mapLocation(rows[0]) : null
+}
+
+async function deleteLocation(id) {
+  await pool.query('DELETE FROM locations WHERE id = ?', [id])
+}
+
 module.exports = {
   init, close, ping, createUser, findUserByPhone, findUserById, listUsers, updateUserPassword,
   createReport, listReports, findReportById, updateReportStatus, deleteReport, deleteReportsOlderThan,
-  createLocation, listLocations, deleteLocationsOlderThan
+  createLocation, listLocations, findLocationById, deleteLocation, deleteLocationsOlderThan
 }
