@@ -3,13 +3,22 @@ const jwt = require('jsonwebtoken')
 const config = require('../config')
 const db = require('../db')
 
-// 去掉敏感字段（身份证、密码哈希）后返回给前端
+// 身份证脱敏：保留前6位+后4位，中间出生日期8位用星号（15位老证保留前6+后1）
+function maskIdCard(idCard) {
+  const s = String(idCard || '')
+  if (s.length >= 18) return s.slice(0, 6) + '********' + s.slice(-4)
+  if (s.length === 15) return s.slice(0, 6) + '********' + s.slice(-1)
+  return s
+}
+
+// 去掉敏感字段（密码哈希）后返回给前端；身份证仅返回脱敏值
 function safeUser(u) {
   if (!u) return null
   return {
     id: u.id,
     name: u.name,
     phone: u.phone,
+    idCardMasked: maskIdCard(u.idCard),
     role: u.role,
     projectId: u.projectId || '',
     projectName: u.projectName || '',

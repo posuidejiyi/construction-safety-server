@@ -71,3 +71,21 @@ CREATE TABLE IF NOT EXISTS monthly_hazards (
   INDEX idx_branch (branch),
   INDEX idx_month (month)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 账号变更/注销申请（个人信息变更由分公司审核，注销由公司审核）
+CREATE TABLE IF NOT EXISTS user_change_requests (
+  id VARCHAR(32) PRIMARY KEY,
+  user_id VARCHAR(32) NOT NULL,
+  user_name VARCHAR(64) NOT NULL,
+  project_name VARCHAR(128) NOT NULL DEFAULT '',
+  branch VARCHAR(64) NOT NULL DEFAULT '',
+  type VARCHAR(16) NOT NULL,
+  request_data JSON NOT NULL,
+  status VARCHAR(16) NOT NULL DEFAULT 'pending',
+  approver VARCHAR(64) NOT NULL DEFAULT '',
+  create_time VARCHAR(32) NOT NULL,
+  handle_time VARCHAR(32) NOT NULL DEFAULT '',
+  INDEX idx_user_id (user_id),
+  INDEX idx_branch (branch),
+  INDEX idx_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

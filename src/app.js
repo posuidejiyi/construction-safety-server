@@ -24,6 +24,7 @@ app.use('/api/locations', require('./routes/locations'))
 app.use('/api/weather', require('./routes/weather'))
 app.use('/api/reminder', require('./routes/reminder'))
 app.use('/api/monthly-hazards', require('./routes/monthlyHazards'))
+app.use('/api/account', require('./routes/account'))
 
 // 404
 app.use((req, res) => res.status(404).json({ success: false, message: '接口不存在' }))

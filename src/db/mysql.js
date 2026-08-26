@@ -112,6 +112,22 @@ const DDL = [
     INDEX idx_uploader_id (uploader_id),
     INDEX idx_branch (branch),
     INDEX idx_month (month)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+  `CREATE TABLE IF NOT EXISTS user_change_requests (
+    id VARCHAR(32) PRIMARY KEY,
+    user_id VARCHAR(32) NOT NULL,
+    user_name VARCHAR(64) NOT NULL,
+    project_name VARCHAR(128) NOT NULL DEFAULT '',
+    branch VARCHAR(64) NOT NULL DEFAULT '',
+    type VARCHAR(16) NOT NULL,
+    request_data JSON NOT NULL,
+    status VARCHAR(16) NOT NULL DEFAULT 'pending',
+    approver VARCHAR(64) NOT NULL DEFAULT '',
+    create_time VARCHAR(32) NOT NULL,
+    handle_time VARCHAR(32) NOT NULL DEFAULT '',
+    INDEX idx_user_id (user_id),
+    INDEX idx_branch (branch),
+    INDEX idx_status (status)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
 ]
 
@@ -393,9 +409,98 @@ async function deleteMonthlyHazard(id) {
   await pool.query('DELETE FROM monthly_hazards WHERE id = ?', [id])
 }
 
+// ===== 账号变更/注销申请（user_change_requests 表）=====
+function mapChangeRequest(row) {
+  if (!row) return null
+  const parseJson = (v, fallback) => {
+    if (typeof v === 'string') { try { return JSON.parse(v) } catch (e) { return fallback } }
+    return v || fallback
+  }
+  return {
+    id: row.id,
+    userId: row.user_id,
+    userName: row.user_name,
+    projectName: row.project_name,
+    branch: row.branch,
+    type: row.type,
+    requestData: parseJson(row.request_data, {}),
+    status: row.status,
+    approver: row.approver,
+    createTime: row.create_time,
+    handleTime: row.handle_time
+  }
+}
+
+async function createChangeRequest(req) {
+  await pool.query(
+    `INSERT INTO user_change_requests (id, user_id, user_name, project_name, branch, type, request_data, status, approver, create_time, handle_time)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [req.id, req.userId, req.userName, req.projectName || '', req.branch || '', req.type, JSON.stringify(req.requestData || {}), req.status || 'pending', req.approver || '', req.createTime, req.handleTime || '']
+  )
+  return req
+}
+
+async function listChangeRequests(filter = {}) {
+  const conds = []
+  const params = []
+  if (filter.userId) { conds.push('user_id = ?'); params.push(filter.userId) }
+  if (filter.branch) { conds.push('branch = ?'); params.push(filter.branch) }
+  if (filter.type) { conds.push('type = ?'); params.push(filter.type) }
+  if (filter.status) { conds.push('status = ?'); params.push(filter.status) }
+  const where = conds.length ? 'WHERE ' + conds.join(' AND ') : ''
+  const [rows] = await pool.query(`SELECT * FROM user_change_requests ${where} ORDER BY create_time DESC, id DESC`, params)
+  return rows.map(mapChangeRequest)
+}
+
+async function findChangeRequestById(id) {
+  const [rows] = await pool.query('SELECT * FROM user_change_requests WHERE id = ? LIMIT 1', [id])
+  return mapChangeRequest(rows[0])
+}
+
+async function updateChangeRequestStatus(id, status, approver) {
+  await pool.query(
+    'UPDATE user_change_requests SET status = ?, approver = ?, handle_time = ? WHERE id = ?',
+    [status, approver || '', formatTime(new Date()), id]
+  )
+  return findChangeRequestById(id)
+}
+
+// 更新用户资料（手机号/项目名称变更审核通过后）
+async function updateUserProfile(id, patch) {
+  const sets = []
+  const params = []
+  if (patch.phone !== undefined) { sets.push('phone = ?'); params.push(patch.phone) }
+  if (patch.projectName !== undefined) { sets.push('project_name = ?'); params.push(patch.projectName) }
+  if (sets.length === 0) return null
+  params.push(id)
+  await pool.query('UPDATE users SET ' + sets.join(', ') + ' WHERE id = ?', params)
+  const [rows] = await pool.query('SELECT * FROM users WHERE id = ? LIMIT 1', [id])
+  return mapUser(rows[0])
+}
+
+// 注销账号（公司端审核通过后）：清空填报信息并删除注册资料
+async function deleteUserDataAndUser(id) {
+  const conn = await pool.getConnection()
+  try {
+    await conn.beginTransaction()
+    await conn.query('DELETE FROM reports WHERE reporter_id = ?', [id])
+    await conn.query('DELETE FROM locations WHERE reporter_id = ?', [id])
+    await conn.query('DELETE FROM monthly_hazards WHERE uploader_id = ?', [id])
+    await conn.query('DELETE FROM users WHERE id = ?', [id])
+    await conn.commit()
+  } catch (e) {
+    await conn.rollback()
+    throw e
+  } finally {
+    conn.release()
+  }
+}
+
 module.exports = {
   init, close, ping, createUser, findUserByPhone, findUserById, listUsers, updateUserPassword,
   createReport, listReports, findReportById, updateReportStatus, deleteReport, deleteReportsOlderThan,
   createLocation, listLocations, findLocationById, deleteLocation, deleteLocationsOlderThan,
-  createMonthlyHazard, listMonthlyHazards, findMonthlyHazardById, deleteMonthlyHazard
+  createMonthlyHazard, listMonthlyHazards, findMonthlyHazardById, deleteMonthlyHazard,
+  createChangeRequest, listChangeRequests, findChangeRequestById, updateChangeRequestStatus,
+  updateUserProfile, deleteUserDataAndUser
 }

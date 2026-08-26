@@ -192,6 +192,97 @@ router.get('/', async (req, res, next) => {
   } catch (e) { next(e) }
 })
 
+// 本月各项目月度危险源辨识上传状态（待办事项用；每月20日起生效）
+router.get('/upload-status', async (req, res, next) => {
+  try {
+    const now = new Date()
+    const pad = n => String(n).padStart(2, '0')
+    const month = now.getFullYear() + '-' + pad(now.getMonth() + 1)
+    const inWindow = now.getDate() >= 20
+
+    const users = await db.listUsers()
+    const projectUsers = users.filter(u => u.role === ROLES.PROJECT)
+    const hazards = await db.listMonthlyHazards({})
+    // 已上传口径：存在月份 ≥ 当前月份的清单即视为已完成（提前上传下月清单也算完成）
+    const uploadedBy = new Set(hazards.filter(h => String(h.month) >= month).map(h => h.uploaderId))
+
+    // 项目端：只返回自己
+    if (req.user.role === ROLES.PROJECT) {
+      return res.json({
+        success: true,
+        month,
+        inWindow,
+        uploaded: uploadedBy.has(req.user.id)
+      })
+    }
+
+    // 分公司端：本分公司项目
+    if (req.user.role === ROLES.BRANCH) {
+      const projects = projectUsers
+        .filter(u => u.branch === req.user.branch)
+        .map(u => ({
+          userId: u.id,
+          name: u.name,
+          projectName: u.projectName,
+          phone: u.phone,
+          uploaded: uploadedBy.has(u.id)
+        }))
+      return res.json({ success: true, month, inWindow, projects })
+    }
+
+    // 公司端：全公司项目 + 按分公司聚合（前端按分公司分组排序）
+    const projects = projectUsers.map(u => ({
+      userId: u.id,
+      name: u.name,
+      projectName: u.projectName,
+      branch: u.branch || '',
+      phone: u.phone,
+      uploaded: uploadedBy.has(u.id)
+    }))
+    res.json({ success: true, month, inWindow, projects })
+  } catch (e) { next(e) }
+})
+
+// 全部导出：分公司=本分公司所有项目填报的危险源辨识合并；公司端=全公司合并（按模板格式）
+router.get('/export', async (req, res, next) => {
+  try {
+    const list = await scopedMonthlyHazards(req.user)
+    const rows = []
+    // 列表接口不含 data 字段，导出时按 id 取全量
+    for (const h of list) {
+      const full = await db.findMonthlyHazardById(h.id)
+      ;(full && full.data || []).forEach(r => {
+        rows.push([
+          r.seq || '', r.branch || '', r.project || '', r.area || '', r.riskPoint || '',
+          r.planTime || '', r.riskParam || '', r.hazardDesc || '', r.riskLevel || '',
+          r.accidentType || '', r.controlMeasures || '', r.controlLevel || '',
+          r.dutyDept || '', r.superviseDept || ''
+        ])
+      })
+    }
+    if (rows.length === 0) {
+      return res.status(400).json({ success: false, message: '暂无已导入的危险源数据可导出' })
+    }
+
+    const header = HEADERS.map(h => h.names[0])
+    const wb = XLSX.utils.book_new()
+    const ws = XLSX.utils.aoa_to_sheet([header, ...rows])
+    ws['!cols'] = [
+      { wch: 6 }, { wch: 10 }, { wch: 16 }, { wch: 12 }, { wch: 18 }, { wch: 18 }, { wch: 22 },
+      { wch: 40 }, { wch: 10 }, { wch: 18 }, { wch: 40 }, { wch: 14 }, { wch: 24 }, { wch: 20 }
+    ]
+    XLSX.utils.book_append_sheet(wb, ws, '危险源清单汇总表')
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' })
+
+    const now = new Date()
+    const pad = n => String(n).padStart(2, '0')
+    const fileName = '危险源辨识汇总_' + now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate()) + '.xlsx'
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    res.setHeader('Content-Disposition', 'attachment; filename="' + encodeURIComponent(fileName) + '"')
+    res.send(buf)
+  } catch (e) { next(e) }
+})
+
 // 下载导入模板（与导入格式一致）
 router.get('/template', (req, res, next) => {
   try {

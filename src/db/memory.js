@@ -3,7 +3,7 @@
 const bcrypt = require('bcryptjs')
 const { genId, formatTime } = require('../utils/gen')
 
-const state = { users: [], reports: [], locations: [], monthlyHazards: [] }
+const state = { users: [], reports: [], locations: [], monthlyHazards: [], changeRequests: [] }
 
 function defaultAccounts() {
   const hash = bcrypt.hashSync('admin123', 10)
@@ -115,9 +115,55 @@ async function deleteMonthlyHazard(id) {
   state.monthlyHazards = state.monthlyHazards.filter(h => h.id !== id)
 }
 
+// ===== 账号变更/注销申请（与 mysql 驱动保持相同方法签名）=====
+async function createChangeRequest(req) {
+  state.changeRequests.unshift(req)
+  return req
+}
+
+async function listChangeRequests(filter = {}) {
+  return state.changeRequests
+    .filter(r => (!filter.userId || r.userId === filter.userId) &&
+                 (!filter.branch || r.branch === filter.branch) &&
+                 (!filter.type || r.type === filter.type) &&
+                 (!filter.status || r.status === filter.status))
+    .slice()
+    .sort((a, b) => b.createTime.localeCompare(a.createTime))
+}
+
+async function findChangeRequestById(id) {
+  return state.changeRequests.find(r => r.id === id) || null
+}
+
+async function updateChangeRequestStatus(id, status, approver) {
+  const r = state.changeRequests.find(x => x.id === id)
+  if (!r) return null
+  r.status = status
+  r.approver = approver || ''
+  r.handleTime = formatTime(new Date())
+  return r
+}
+
+async function updateUserProfile(id, patch) {
+  const u = state.users.find(x => x.id === id)
+  if (!u) return null
+  if (patch.phone !== undefined) u.phone = patch.phone
+  if (patch.projectName !== undefined) u.projectName = patch.projectName
+  return u
+}
+
+async function deleteUserDataAndUser(id) {
+  state.reports = state.reports.filter(r => r.reporterId !== id)
+  state.locations = state.locations.filter(l => l.reporterId !== id)
+  state.monthlyHazards = state.monthlyHazards.filter(h => h.uploaderId !== id)
+  state.users = state.users.filter(u => u.id !== id)
+}
+
 module.exports = {
   init, close, createUser, findUserByPhone, findUserById, listUsers, updateUserPassword,
   createReport, listReports, findReportById, updateReportStatus, deleteReport, deleteReportsOlderThan,
   createLocation, listLocations, findLocationById, deleteLocation, deleteLocationsOlderThan,
-  createMonthlyHazard, listMonthlyHazards, findMonthlyHazardById, deleteMonthlyHazard
+  createMonthlyHazard, listMonthlyHazards, findMonthlyHazardById, deleteMonthlyHazard,
+  createChangeRequest, listChangeRequests, findChangeRequestById, updateChangeRequestStatus,
+  updateUserProfile, deleteUserDataAndUser
 }
