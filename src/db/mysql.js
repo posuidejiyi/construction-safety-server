@@ -94,6 +94,24 @@ const DDL = [
     reporter_id VARCHAR(32) NOT NULL,
     create_time VARCHAR(32) NOT NULL,
     INDEX idx_branch (branch)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+  `CREATE TABLE IF NOT EXISTS monthly_hazards (
+    id VARCHAR(32) PRIMARY KEY,
+    title VARCHAR(255) NOT NULL DEFAULT '',
+    month VARCHAR(16) NOT NULL DEFAULT '',
+    file_name VARCHAR(255) NOT NULL DEFAULT '',
+    row_count INT NOT NULL DEFAULT 0,
+    risk_stats JSON NULL,
+    project_id VARCHAR(64) NOT NULL DEFAULT '',
+    project_name VARCHAR(128) NOT NULL DEFAULT '',
+    branch VARCHAR(64) NOT NULL DEFAULT '',
+    uploader VARCHAR(64) NOT NULL,
+    uploader_id VARCHAR(32) NOT NULL,
+    data JSON NOT NULL,
+    create_time VARCHAR(32) NOT NULL,
+    INDEX idx_uploader_id (uploader_id),
+    INDEX idx_branch (branch),
+    INDEX idx_month (month)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
 ]
 
@@ -318,8 +336,66 @@ async function deleteLocation(id) {
   await pool.query('DELETE FROM locations WHERE id = ?', [id])
 }
 
+// ===== 月度危险源辨识（monthly_hazards 表）=====
+function mapMonthlyHazard(row, withData) {
+  if (!row) return null
+  const parseJson = (v, fallback) => {
+    if (typeof v === 'string') { try { return JSON.parse(v) } catch (e) { return fallback } }
+    return v || fallback
+  }
+  const base = {
+    id: row.id,
+    title: row.title,
+    month: row.month,
+    fileName: row.file_name,
+    rowCount: row.row_count,
+    riskStats: parseJson(row.risk_stats, {}),
+    projectId: row.project_id,
+    projectName: row.project_name,
+    branch: row.branch,
+    uploader: row.uploader,
+    uploaderId: row.uploader_id,
+    createTime: row.create_time
+  }
+  if (withData) base.data = parseJson(row.data, [])
+  return base
+}
+
+async function createMonthlyHazard(h) {
+  await pool.query(
+    `INSERT INTO monthly_hazards (id, title, month, file_name, row_count, risk_stats, project_id, project_name, branch, uploader, uploader_id, data, create_time)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [h.id, h.title, h.month, h.fileName || '', h.rowCount, JSON.stringify(h.riskStats || {}), h.projectId || '', h.projectName || '', h.branch || '', h.uploader, h.uploaderId, JSON.stringify(h.data || []), h.createTime]
+  )
+  return h
+}
+
+async function listMonthlyHazards(filter = {}) {
+  const conds = []
+  const params = []
+  if (filter.uploaderId) { conds.push('uploader_id = ?'); params.push(filter.uploaderId) }
+  if (filter.branch) { conds.push('branch = ?'); params.push(filter.branch) }
+  const where = conds.length ? 'WHERE ' + conds.join(' AND ') : ''
+  const [rows] = await pool.query(
+    `SELECT id, title, month, file_name, row_count, risk_stats, project_id, project_name, branch, uploader, uploader_id, create_time
+     FROM monthly_hazards ${where} ORDER BY create_time DESC, id DESC`,
+    params
+  )
+  return rows.map(r => mapMonthlyHazard(r, false))
+}
+
+async function findMonthlyHazardById(id) {
+  const [rows] = await pool.query('SELECT * FROM monthly_hazards WHERE id = ? LIMIT 1', [id])
+  return mapMonthlyHazard(rows[0], true)
+}
+
+async function deleteMonthlyHazard(id) {
+  await pool.query('DELETE FROM monthly_hazards WHERE id = ?', [id])
+}
+
 module.exports = {
   init, close, ping, createUser, findUserByPhone, findUserById, listUsers, updateUserPassword,
   createReport, listReports, findReportById, updateReportStatus, deleteReport, deleteReportsOlderThan,
-  createLocation, listLocations, findLocationById, deleteLocation, deleteLocationsOlderThan
+  createLocation, listLocations, findLocationById, deleteLocation, deleteLocationsOlderThan,
+  createMonthlyHazard, listMonthlyHazards, findMonthlyHazardById, deleteMonthlyHazard
 }

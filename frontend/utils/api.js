@@ -1,7 +1,7 @@
 // utils/api.js —— 对接后端服务的请求封装
 // 已配置为你的云托管服务域名；登录成功后自动保存登录态，其余接口自动携带 token。
 // 401 时自动清除登录态并跳回登录页。
-const BASE_URL = 'https://construction-safety-292362-10-1463965914.sh.run.tcloudbase.com'
+const BASE_URL = 'https://zjbjszjs.cn'
 
 const TOKEN_KEY = 'cs_token'
 const USER_KEY = 'cs_current_user'

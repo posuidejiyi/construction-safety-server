@@ -50,3 +50,24 @@ CREATE TABLE IF NOT EXISTS locations (
   create_time VARCHAR(32) NOT NULL,
   INDEX idx_branch (branch)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 月度危险源辨识：Excel 导入后整份存储（data 为行数组 JSON），
+-- 服务启动时自动建表，无需手工执行
+CREATE TABLE IF NOT EXISTS monthly_hazards (
+  id VARCHAR(32) PRIMARY KEY,
+  title VARCHAR(255) NOT NULL DEFAULT '',
+  month VARCHAR(16) NOT NULL DEFAULT '',
+  file_name VARCHAR(255) NOT NULL DEFAULT '',
+  row_count INT NOT NULL DEFAULT 0,
+  risk_stats JSON NULL,
+  project_id VARCHAR(64) NOT NULL DEFAULT '',
+  project_name VARCHAR(128) NOT NULL DEFAULT '',
+  branch VARCHAR(64) NOT NULL DEFAULT '',
+  uploader VARCHAR(64) NOT NULL,
+  uploader_id VARCHAR(32) NOT NULL,
+  data JSON NOT NULL,
+  create_time VARCHAR(32) NOT NULL,
+  INDEX idx_uploader_id (uploader_id),
+  INDEX idx_branch (branch),
+  INDEX idx_month (month)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

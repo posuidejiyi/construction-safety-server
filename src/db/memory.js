@@ -3,7 +3,7 @@
 const bcrypt = require('bcryptjs')
 const { genId, formatTime } = require('../utils/gen')
 
-const state = { users: [], reports: [], locations: [] }
+const state = { users: [], reports: [], locations: [], monthlyHazards: [] }
 
 function defaultAccounts() {
   const hash = bcrypt.hashSync('admin123', 10)
@@ -90,8 +90,34 @@ async function deleteLocation(id) {
   state.locations = state.locations.filter(l => l.id !== id)
 }
 
+// ===== 月度危险源辨识（与 mysql 驱动保持相同方法签名）=====
+async function createMonthlyHazard(h) {
+  state.monthlyHazards.unshift(h)
+  return h
+}
+
+async function listMonthlyHazards(filter = {}) {
+  return state.monthlyHazards
+    .filter(h => (!filter.uploaderId || h.uploaderId === filter.uploaderId) &&
+                 (!filter.branch || h.branch === filter.branch))
+    .map(h => {
+      const { data, ...rest } = h
+      return rest
+    })
+    .sort((a, b) => b.createTime.localeCompare(a.createTime))
+}
+
+async function findMonthlyHazardById(id) {
+  return state.monthlyHazards.find(h => h.id === id) || null
+}
+
+async function deleteMonthlyHazard(id) {
+  state.monthlyHazards = state.monthlyHazards.filter(h => h.id !== id)
+}
+
 module.exports = {
   init, close, createUser, findUserByPhone, findUserById, listUsers, updateUserPassword,
   createReport, listReports, findReportById, updateReportStatus, deleteReport, deleteReportsOlderThan,
-  createLocation, listLocations, findLocationById, deleteLocation, deleteLocationsOlderThan
+  createLocation, listLocations, findLocationById, deleteLocation, deleteLocationsOlderThan,
+  createMonthlyHazard, listMonthlyHazards, findMonthlyHazardById, deleteMonthlyHazard
 }
