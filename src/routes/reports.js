@@ -1,6 +1,9 @@
 // 上报相关接口：创建 / 列表 / 汇总 / 上报状态 / 审核
 const express = require('express')
+const jwt = require('jsonwebtoken')
+const XLSX = require('xlsx')
 const db = require('../db')
+const config = require('../config')
 const { auth } = require('../middleware/auth')
 const { genId, formatTime } = require('../utils/gen')
 const { REPORT_TYPE_NAMES, ALL_REPORT_TYPES, ROLES } = require('../data/constants')
@@ -8,6 +11,85 @@ const { getSummary } = require('../services/summary')
 const { getProjectReportStatus, getAllProjectReportStatus } = require('../services/reportStatus')
 
 const router = express.Router()
+
+// 导出 Excel（危险源等各类型上报）：
+// 1) 带 Authorization 调用 → 返回 JSON { url }，前端复制链接到浏览器下载（微信内无法直接下载）
+// 2) 链接带 ?download=1&token=xxx 直接访问 → 返回 xlsx 二进制
+// 注：该路由必须注册在 router.use(auth) 之前，否则 query token 会被全局鉴权拦截
+router.get('/export', async (req, res, next) => {
+  try {
+    // 手动鉴权：支持 Authorization 头或 query token（浏览器直接打开下载链接时没有头）
+    const header = req.headers.authorization || ''
+    const token = (header.startsWith('Bearer ') ? header.slice(7) : '') || req.query.token || ''
+    let user = null
+    if (token) {
+      try {
+        const payload = jwt.verify(token, config.jwtSecret)
+        user = await db.findUserById(payload.id)
+      } catch (e) { /* 下方统一 401 */ }
+    }
+    if (!user) return res.status(401).json({ success: false, message: '未登录' })
+
+    const type = req.query.type || 'hazardSource'
+    if (!ALL_REPORT_TYPES.includes(type)) {
+      return res.status(400).json({ success: false, message: '导出类型不正确' })
+    }
+
+    const reports = await scopedReports(user, type)
+    // 注意：listReports 会把 data 展开到顶层（items/subType/level/quantity 在顶层，无 data 字段）
+    const rows = []
+    reports.forEach((r, idx) => {
+      const items = Array.isArray(r.items) && r.items.length > 0 ? r.items : [null]
+      items.forEach(it => {
+        const name = it && it.name ? it.name : ''
+        const level = it && it.level ? it.level : (r.level || '')
+        rows.push([
+          idx + 1,
+          r.projectName || '',
+          r.branch || '',
+          r.reporter || '',
+          REPORT_TYPE_NAMES[r.type] || r.type || '',
+          name || r.subType || r.content || '',
+          level,
+          it && it.quantity ? it.quantity : (r.quantity || ''),
+          r.createTime || ''
+        ])
+      })
+    })
+
+    if (rows.length === 0) {
+      return res.status(400).json({ success: false, message: '暂无上报数据可导出' })
+    }
+
+    const headerRow = ['序号', '项目名称', '分公司', '上报人', '上报类型', '内容', '风险等级', '数量', '上报时间']
+    const wb = XLSX.utils.book_new()
+    const ws = XLSX.utils.aoa_to_sheet([headerRow, ...rows])
+    ws['!cols'] = [
+      { wch: 6 }, { wch: 24 }, { wch: 14 }, { wch: 12 }, { wch: 12 },
+      { wch: 40 }, { wch: 12 }, { wch: 8 }, { wch: 20 }
+    ]
+    XLSX.utils.book_append_sheet(wb, ws, REPORT_TYPE_NAMES[type] || '上报数据')
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' })
+
+    const now = new Date()
+    const pad = n => String(n).padStart(2, '0')
+    const dateStr = now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate())
+    const fileName = (REPORT_TYPE_NAMES[type] || '上报数据') + '_' + dateStr + '.xlsx'
+
+    if (req.query.download === '1') {
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+      res.setHeader('Content-Disposition', 'attachment; filename="' + encodeURIComponent(fileName) + '"')
+      return res.send(buf)
+    }
+
+    // JSON 模式：返回下载链接（含 token，浏览器可直接打开）
+    const proto = req.get('x-forwarded-proto') || req.protocol || 'https'
+    const base = proto + '://' + req.get('host')
+    const url = base + '/api/reports/export?type=' + encodeURIComponent(type) + '&download=1&token=' + encodeURIComponent(token)
+    res.json({ success: true, url })
+  } catch (e) { next(e) }
+})
+
 router.use(auth)
 
 // 把数据库里的上报记录还原成前端结构（data 里的字段展开到顶层）
