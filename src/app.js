@@ -23,7 +23,8 @@ app.use('/api/reports', require('./routes/reports'))
 app.use('/api/locations', require('./routes/locations'))
 app.use('/api/weather', require('./routes/weather'))
 app.use('/api/reminder', require('./routes/reminder'))
-app.use('/api/monthly-hazards', require('./routes/monthlyHazards'))
+// 【2026-09-01 暂停】月度危险源辨识模块（Excel 导入/清单/上传状态/导出）——恢复时取消注释
+// app.use('/api/monthly-hazards', require('./routes/monthlyHazards'))
 app.use('/api/account', require('./routes/account'))
 
 // 404
