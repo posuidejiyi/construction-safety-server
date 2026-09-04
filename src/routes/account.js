@@ -1,4 +1,4 @@
-// 账号安全：个人信息变更申请（分公司审核）/ 账号注销申请（公司审核）
+// 账号安全：个人信息变更申请（分公司审核）/ 账号注销申请（分公司审核）
 const express = require('express')
 const db = require('../db')
 const { auth } = require('../middleware/auth')
@@ -92,27 +92,26 @@ router.post('/cancel-request', async (req, res, next) => {
       handleTime: ''
     }
     await db.createChangeRequest(reqRecord)
-    res.json({ success: true, request: reqRecord, message: '注销申请已提交，等待公司审核' })
+    res.json({ success: true, request: reqRecord, message: '注销申请已提交，等待分公司审核' })
   } catch (e) { next(e) }
 })
 
 // 申请列表（按角色限定范围）
-// 项目端：自己的申请；分公司端：本分公司项目端的变更申请（profile）；公司端：全部注销申请（cancel）
+// 项目端：自己的申请；分公司端：本分公司的全部申请（profile 变更 + cancel 注销）；公司端：不再返回（审核已下放到分公司）
 router.get('/requests', async (req, res, next) => {
   try {
     let list = []
     if (req.user.role === ROLES.PROJECT) {
       list = await db.listChangeRequests({ userId: req.user.id })
     } else if (req.user.role === ROLES.BRANCH) {
-      list = await db.listChangeRequests({ branch: req.user.branch, type: 'profile' })
-    } else if (req.user.role === ROLES.COMPANY) {
-      list = await db.listChangeRequests({ type: 'cancel' })
+      // 分公司端：本分公司的全部申请（信息变更 profile + 账号注销 cancel）
+      list = await db.listChangeRequests({ branch: req.user.branch })
     }
     res.json({ success: true, list })
   } catch (e) { next(e) }
 })
 
-// 审核通过：profile 由分公司审核；cancel 由公司审核
+// 审核通过：profile 变更、cancel 注销均由分公司审核（注销审核已从公司端移到分公司端）
 router.put('/requests/:id/approve', async (req, res, next) => {
   try {
     const reqRecord = await db.findChangeRequestById(req.params.id)
@@ -140,9 +139,9 @@ router.put('/requests/:id/approve', async (req, res, next) => {
       return res.json({ success: true, message: '已同意变更，用户信息已更新' })
     }
 
-    // cancel：仅公司端可审核
-    if (req.user.role !== ROLES.COMPANY) {
-      return res.status(403).json({ success: false, message: '仅公司端可审核注销申请' })
+    // cancel：仅本分公司可审核（注销审核已从公司端移到分公司端）
+    if (req.user.role !== ROLES.BRANCH || reqRecord.branch !== req.user.branch) {
+      return res.status(403).json({ success: false, message: '仅本分公司可审核该注销申请' })
     }
     await db.deleteUserDataAndUser(reqRecord.userId)
     await db.updateChangeRequestStatus(reqRecord.id, 'approved', req.user.name)
@@ -161,8 +160,8 @@ router.put('/requests/:id/reject', async (req, res, next) => {
       if (req.user.role !== ROLES.BRANCH || reqRecord.branch !== req.user.branch) {
         return res.status(403).json({ success: false, message: '仅本分公司可审核该变更申请' })
       }
-    } else if (req.user.role !== ROLES.COMPANY) {
-      return res.status(403).json({ success: false, message: '仅公司端可审核注销申请' })
+    } else if (req.user.role !== ROLES.BRANCH || reqRecord.branch !== req.user.branch) {
+      return res.status(403).json({ success: false, message: '仅本分公司可审核该注销申请' })
     }
     await db.updateChangeRequestStatus(reqRecord.id, 'rejected', req.user.name)
     res.json({ success: true, message: '已驳回申请' })
