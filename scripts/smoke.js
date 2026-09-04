@@ -94,9 +94,10 @@ async function main() {
   const loc = await call('POST', '/api/locations', { city: '江苏省', district: '南京市玄武区' }, token)
   check('项目定位上报', loc.status === 200 && loc.data.success)
 
-  // 11. 我的上报列表（项目端只看自己）
+  // 11. 我的上报列表（项目端只看自己；定位也会作为 projectLocation 合并进列表）
   const mine = await call('GET', '/api/reports', {}, token)
-  check('项目端上报列表=4条', mine.status === 200 && mine.data.reports.length === 4, mine.data.reports && mine.data.reports.length)
+  const mineTypes = mine.data.reports.map(r => r.type)
+  check('项目端上报列表=5条(4类上报+1定位)', mine.status === 200 && mine.data.reports.length === 5 && mineTypes.includes('projectLocation'), mine.data.reports && mine.data.reports.length)
 
   // 12. 汇总（公司端）
   const summary = await call('GET', '/api/reports/summary', {}, adminToken)
