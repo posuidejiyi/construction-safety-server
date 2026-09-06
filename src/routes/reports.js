@@ -206,18 +206,32 @@ router.get('/summary', async (req, res, next) => {
   } catch (e) { next(e) }
 })
 
+// 本周一 00:00 字符串（与 create_time 格式一致，用于“本周口径”过滤；周日晚 24 点后自动重置）
+function weekStartStr() {
+  const now = new Date()
+  const day = now.getDay() // 0=周日 ... 6=周六
+  const diff = day === 0 ? -6 : 1 - day
+  const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() + diff)
+  const pad = n => String(n).padStart(2, '0')
+  return monday.getFullYear() + '-' + pad(monday.getMonth() + 1) + '-' + pad(monday.getDate()) + ' 00:00'
+}
+
 // 项目上报状态（分公司端看本分公司，公司端看全公司；项目端无此权限）
+// 只统计本周一 00:00 之后的上报，周日晚 24 点自动重置为“未填报”
 router.get('/status', async (req, res, next) => {
   try {
     const users = await db.listUsers()
     const projectUsers = users.filter(u => u.role === ROLES.PROJECT)
+    const weekStart = weekStartStr()
     if (req.user.role === ROLES.BRANCH) {
       const branchUsers = projectUsers.filter(u => u.branch === req.user.branch)
-      const reports = await db.listReports({ branch: req.user.branch })
+      const reports = (await db.listReports({ branch: req.user.branch }))
+        .filter(r => String(r.createTime || '') >= weekStart)
       return res.json({ success: true, status: getProjectReportStatus(branchUsers, reports) })
     }
     if (req.user.role === ROLES.COMPANY) {
-      const reports = await db.listReports({})
+      const reports = (await db.listReports({}))
+        .filter(r => String(r.createTime || '') >= weekStart)
       return res.json({ success: true, status: getAllProjectReportStatus(projectUsers, reports) })
     }
     res.status(403).json({ success: false, message: '项目端无此权限' })
