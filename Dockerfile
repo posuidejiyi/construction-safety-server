@@ -3,6 +3,10 @@ FROM node:20-alpine
 
 WORKDIR /app
 
+# 时区设为北京时间：容器默认 UTC，会导致周重置/周一提醒等“本周口径”偏移 8 小时
+RUN apk add --no-cache tzdata
+ENV TZ=Asia/Shanghai
+
 # 先装依赖，利用缓存
 COPY package*.json ./
 RUN npm ci --omit=dev || npm install --omit=dev
