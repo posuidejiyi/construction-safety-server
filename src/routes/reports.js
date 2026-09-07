@@ -227,12 +227,16 @@ router.get('/status', async (req, res, next) => {
       const branchUsers = projectUsers.filter(u => u.branch === req.user.branch)
       const reports = (await db.listReports({ branch: req.user.branch }))
         .filter(r => String(r.createTime || '') >= weekStart)
-      return res.json({ success: true, status: getProjectReportStatus(branchUsers, reports) })
+      const locations = (await db.listLocations({ branch: req.user.branch }))
+        .filter(l => String(l.createTime || '') >= weekStart)
+      return res.json({ success: true, status: getProjectReportStatus(branchUsers, reports, locations) })
     }
     if (req.user.role === ROLES.COMPANY) {
       const reports = (await db.listReports({}))
         .filter(r => String(r.createTime || '') >= weekStart)
-      return res.json({ success: true, status: getAllProjectReportStatus(projectUsers, reports) })
+      const locations = (await db.listLocations({}))
+        .filter(l => String(l.createTime || '') >= weekStart)
+      return res.json({ success: true, status: getAllProjectReportStatus(projectUsers, reports, locations) })
     }
     res.status(403).json({ success: false, message: '项目端无此权限' })
   } catch (e) { next(e) }

@@ -45,7 +45,8 @@ function checkMondayReportReminder(user, projectUsers, reports, locations) {
   if (user.role === 'branch') {
     const branchUsers = projectUsers.filter(p => p.role === 'project' && p.branch === user.branch)
     const branchReports = weekReports.filter(r => r.branch === user.branch)
-    const status = getProjectReportStatus(branchUsers, branchReports)
+    const branchLocations = weekLocations.filter(l => l.branch === user.branch)
+    const status = getProjectReportStatus(branchUsers, branchReports, branchLocations)
     if (status.unreportedCount > 0) {
       const names = status.unreported.map(u => u.projectName).join('、')
       return { title: '项目上报提醒', content: `${user.branch}共有${status.unreportedCount}个项目本周尚未上报：${names}`, action: 'goDashboard' }
@@ -55,7 +56,7 @@ function checkMondayReportReminder(user, projectUsers, reports, locations) {
 
   // 公司端：检查全公司未上报的项目（本周口径）
   if (user.role === 'company') {
-    const status = getAllProjectReportStatus(projectUsers, weekReports)
+    const status = getAllProjectReportStatus(projectUsers, weekReports, weekLocations)
     if (status.unreportedCount > 0) {
       return { title: '项目上报提醒', content: `全公司共有${status.unreportedCount}个项目本周尚未上报（共${status.total}个项目），请督促各分公司尽快完成上报。`, action: 'goDashboard' }
     }
