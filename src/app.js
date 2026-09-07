@@ -11,10 +11,10 @@ app.use(express.json())
 app.get('/health', async (req, res) => {
   try {
     if (config.db.driver === 'mysql') await db.ping()
-    res.json({ status: 'ok', db: 'ok' })
+    res.json({ status: 'ok', db: 'ok', version: require('../package.json').version })
   } catch (e) {
     console.error('[健康检查] 数据库不可用：', e.message)
-    res.status(503).json({ status: 'degraded', db: 'error' })
+    res.status(503).json({ status: 'degraded', db: 'error', version: require('../package.json').version })
   }
 })
 
