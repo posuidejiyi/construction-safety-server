@@ -5,6 +5,9 @@
 // 只有 5 项全部完成才计为"已上报"，缺任意一项都算"未上报"
 const { ALL_REPORT_TYPES } = require('../data/constants')
 
+// 5 项任务的 key 列表（顺序与前端 TODO_TASKS 一致）
+const ALL_TASK_KEYS = ['dangerWork', 'dangerEng', 'hazardSource', 'machinery', 'projectLocation']
+
 // 构建 reporterId -> { 已上报类型: true } 映射
 function buildTypeMap(reports) {
   const map = {}
@@ -16,12 +19,11 @@ function buildTypeMap(reports) {
   return map
 }
 
-// 判断某个项目是否完成全部 5 项
-function isCompleted(reporterId, typeMap, locatedIds) {
+// 计算某项目缺失的任务 key 列表（即未完成项）
+function getMissingTypes(reporterId, typeMap, locatedIds) {
   const types = typeMap[reporterId] || {}
-  const allReported = ALL_REPORT_TYPES.every(t => types[t] === true)
   const hasLocation = locatedIds.has(reporterId)
-  return allReported && hasLocation
+  return ALL_TASK_KEYS.filter(k => (k === 'projectLocation' ? !hasLocation : types[k] !== true))
 }
 
 // 某分公司下项目上报状态
@@ -33,8 +35,9 @@ function getProjectReportStatus(projectUsers, reports, locations) {
   const unreported = []
 
   projectUsers.forEach(p => {
-    const item = { name: p.name, projectName: p.projectName, branch: p.branch, phone: p.phone }
-    if (isCompleted(p.id, typeMap, locatedIds)) {
+    const missingTypes = getMissingTypes(p.id, typeMap, locatedIds)
+    const item = { name: p.name, projectName: p.projectName, branch: p.branch, phone: p.phone, missingTypes }
+    if (missingTypes.length === 0) {
       reported.push(item)
     } else {
       unreported.push(item)
@@ -61,8 +64,9 @@ function getAllProjectReportStatus(projectUsers, reports, locations) {
       branchMap[p.branch] = { branch: p.branch, total: 0, reportedCount: 0, unreportedCount: 0, reported: [], unreported: [] }
     }
     branchMap[p.branch].total++
-    const item = { name: p.name, projectName: p.projectName, branch: p.branch, phone: p.phone }
-    if (isCompleted(p.id, typeMap, locatedIds)) {
+    const missingTypes = getMissingTypes(p.id, typeMap, locatedIds)
+    const item = { name: p.name, projectName: p.projectName, branch: p.branch, phone: p.phone, missingTypes }
+    if (missingTypes.length === 0) {
       branchMap[p.branch].reportedCount++
       branchMap[p.branch].reported.push(item)
     } else {
@@ -74,8 +78,8 @@ function getAllProjectReportStatus(projectUsers, reports, locations) {
   const branches = Object.values(branchMap).sort((a, b) => b.total - a.total)
   return {
     total: projectUsers.length,
-    reportedCount: projectUsers.filter(p => isCompleted(p.id, typeMap, locatedIds)).length,
-    unreportedCount: projectUsers.filter(p => !isCompleted(p.id, typeMap, locatedIds)).length,
+    reportedCount: projectUsers.filter(p => getMissingTypes(p.id, typeMap, locatedIds).length === 0).length,
+    unreportedCount: projectUsers.filter(p => getMissingTypes(p.id, typeMap, locatedIds).length > 0).length,
     branches
   }
 }
